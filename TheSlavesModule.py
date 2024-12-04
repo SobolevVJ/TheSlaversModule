@@ -85,7 +85,8 @@ class TheSlavesrMod(loader.Module):
 
     BASE_URL = "https://prod.slaves.app/api"
 
-    def __init__(self):
+    def __init__(self, message):
+        self.message = message
         self.config = loader.ModuleConfig(
             loader.ConfigValue(
                 "AUTHORIZATION_HEADER",
@@ -510,4 +511,4 @@ class TheSlavesrMod(loader.Module):
 
     async def get_user_id_from_config_or_default(self) -> Optional[str]:
         """Получает ID пользователя для мониторинга."""
-        return str(message.from_id)
+        return str(self.message.from_id)
