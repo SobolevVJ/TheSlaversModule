@@ -85,8 +85,7 @@ class TheSlavesrMod(loader.Module):
 
     BASE_URL = "https://prod.slaves.app/api"
 
-    def __init__(self, message):
-        self.message = message
+    def __init__(self):
         self.config = loader.ModuleConfig(
             loader.ConfigValue(
                 "AUTHORIZATION_HEADER",
@@ -133,60 +132,52 @@ class TheSlavesrMod(loader.Module):
         sender = await message.get_sender()
         return str(sender.id) if sender else None
 
-    async def make_request(self, method: str, endpoint: str, payload: Optional[Dict] = None) -> Optional[Any]:
-        """Выполняет HTTP-запрос к API и возвращает ответ или None в случае ошибки."""
+    async def make_request(self, method: str, endpoint: str, payload: Optional[Dict] = None, message=None) -> Optional[Any]:
         url = f"{self.BASE_URL}/{endpoint}"
-        random_user_agent = ua.random
         headers = {
-            "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br",
-            "accept-language": "ru,en;q=0.9",
             "authorization": self.config["AUTHORIZATION_HEADER"],
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 YaBrowser/24.10.0.0 Safari/537.36",
-            "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", '
-                        '"YaBrowser";v="24.10", "Yowser";v="2.5"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"Windows"',
-            "referer": "https://prod.slaves.app/profile/6251264728",
+            "user-agent": ua.random,
         }
         try:
             async with aiohttp.ClientSession() as session:
                 if method.lower() == "get":
-                    async with session.get(url, headers=headers, cookies=self.COOKIES) as resp:
+                    async with session.get(url, headers=headers) as resp:
                         resp_text = await resp.text()
-                        if resp.status == 200:
-                            try:
-                                return await resp.json()
-                            except json.JSONDecodeError:
-                                logger.error(f"GET {url} вернул некорректный JSON: {resp_text}")
-                                return None
+                        if resp.headers.get("Content-Type", "").startswith("application/json"):
+                            return await resp.json()
                         else:
-                            logger.error(f"GET {url} failed with status {resp.status}: {resp_text}")
+                            error_msg = (
+                                f"❌ Ошибка запроса.\n\n"
+                                f"<b>Статус:</b> {resp.status}\n"
+                                f"<b>Тип контента:</b> {resp.headers.get('Content-Type')}\n"
+                                f"<b>Ответ:</b> {resp_text[:500]}..."  # Ограничиваем длину ответа
+                            )
+                            if message:
+                                await message.edit(error_msg, parse_mode="html")
+                            logger.error(error_msg)
                             return None
                 elif method.lower() == "post":
-                    headers["Content-Type"] = "application/json"
-                    async with session.post(url, headers=headers, cookies=self.COOKIES, json=payload) as resp:
+                    async with session.post(url, headers=headers, json=payload) as resp:
                         resp_text = await resp.text()
-                        if resp.status == 200:
-                            try:
-                                return await resp.json()
-                            except json.JSONDecodeError:
-                                logger.error(f"POST {url} вернул некорректный JSON: {resp_text}")
-                                return None
+                        if resp.headers.get("Content-Type", "").startswith("application/json"):
+                            return await resp.json()
                         else:
-                            logger.error(f"POST {url} failed with status {resp.status}: {resp_text}")
+                            error_msg = (
+                                f"❌ Ошибка запроса.\n\n"
+                                f"<b>Статус:</b> {resp.status}\n"
+                                f"<b>Тип контента:</b> {resp.headers.get('Content-Type')}\n"
+                                f"<b>Ответ:</b> {resp_text[:500]}..."
+                            )
+                            if message:
+                                await message.edit(error_msg, parse_mode="html")
+                            logger.error(error_msg)
                             return None
-                elif method.lower() == "delete":
-                    async with session.delete(url, headers=headers, cookies=self.COOKIES) as resp:
-                        resp_text = await resp.text()
-                        if resp.status == 200:
-                            return True
-                        else:
-                            logger.error(f"DELETE {url} failed with status {resp.status}: {resp_text}")
-                            return False
-                else:
-                    logger.error(f"Неизвестный метод HTTP: {method}")
-                    return None
+        except aiohttp.ClientError as e:
+            error_msg = f"❌ Ошибка HTTP-запроса: {e}"
+            if message:
+                await message.edit(error_msg)
+            logger.error(error_msg)
+            return None
         except aiohttp.ClientError as e:
             logger.error(f"HTTP request error: {e}")
             return None
@@ -461,7 +452,7 @@ class TheSlavesrMod(loader.Module):
         await asyncio.sleep(10)
         while True:
             logger.info("Начинаю проверку статуса рабов...")
-            user_id = await self.get_user_id_from_config_or_default()
+            user_id = await self.get_user_id_from_config_or_default(message)
             if not user_id:
                 logger.error("Не удалось определить ID пользователя для мониторинга.")
                 await asyncio.sleep(60)
@@ -509,6 +500,6 @@ class TheSlavesrMod(loader.Module):
             logger.info("Проверка рабов завершена. Жду 1 минуту перед следующей проверкой.")
             await asyncio.sleep(60)
 
-    async def get_user_id_from_config_or_default(self) -> Optional[str]:
+    async def get_user_id_from_config_or_default(self, message) -> Optional[str]:
         """Получает ID пользователя для мониторинга."""
-        return str(self.message.from_id)
+        return str(message.from_id)
