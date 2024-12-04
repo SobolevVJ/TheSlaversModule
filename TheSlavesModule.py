@@ -1,3 +1,5 @@
+# СКРИПТ БЫЛ СДЕЛАН ФЕЙДИЧКОЙ
+
 import asyncio
 import json
 import logging
