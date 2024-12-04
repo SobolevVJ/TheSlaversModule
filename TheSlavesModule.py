@@ -83,9 +83,6 @@ class TheSlavesrMod(loader.Module):
             await self.notify_me(self.strings["error_no_auth"])
             logger.error("AUTHORIZATION_HEADER не установлен. Используйте команду `.setauth` для его установки.")
             return
-        await self.notify_me(self.strings["monitor_started"])
-        asyncio.create_task(self.monitor_slaves())
-
     async def notify_me(self, message: str):
         """Отправляет сообщение в "Избранное" (Saved Messages)."""
         try:
