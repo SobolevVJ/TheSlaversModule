@@ -449,56 +449,7 @@ class TheSlavesrMod(loader.Module):
 
     async def monitor_slaves(self):
         """Фоновая задача, которая каждые 1 минуту проверяет статус рабов и выкупает тех, кто покинул систему."""
-        await asyncio.sleep(10)
-        while True:
-            logger.info("Начинаю проверку статуса рабов...")
-            user_id = await self.get_user_id_from_config_or_default(message)
-            if not user_id:
-                logger.error("Не удалось определить ID пользователя для мониторинга.")
-                await asyncio.sleep(60)
-                continue
-            slaves_data = await self.make_request("get", f"user/{user_id}/slaves")
-            if not slaves_data:
-                logger.warning("Не удалось получить данные о рабах.")
-                await asyncio.sleep(60)
-                continue
-            slaves_list = []
-            if isinstance(slaves_data, dict):
-                slaves = slaves_data.get("slaves", [])
-            elif isinstance(slaves_data, list):
-                slaves = slaves_data
-            else:
-                logger.error("Некорректная структура данных от API.")
-                slaves = []
-            if isinstance(slaves, list):
-                slaves_list = slaves
-            else:
-                logger.error("Список рабов не является списком.")
-                slaves_list = []
-            if not slaves_list:
-                logger.info("У пользователя нет рабов для мониторинга.")
-                await asyncio.sleep(60)
-                continue
-            for slave in slaves_list:
-                if not isinstance(slave, dict):
-                    logger.warning(f"Некорректный формат данных для раба: {slave}")
-                    continue
-                slave_id = slave.get("id")
-                status = slave.get("status")
-                if not slave_id:
-                    logger.warning(f"Раб без ID: {slave}")
-                    continue
-                if status == "left":
-                    logger.info(f"Раб с ID {slave_id} покинул систему. Попытка выкупа...")
-                    success = await self.buy_slave(slave_id)
-                    if success:
-                        logger.info(f"Раб с ID {slave_id} успешно выкуплен.")
-                    else:
-                        logger.error(f"Не удалось выкупить раба с ID {slave_id}.")
-                else:
-                    logger.info(f"Раб с ID {slave_id} в норме. Статус: {status}")
-            logger.info("Проверка рабов завершена. Жду 1 минуту перед следующей проверкой.")
-            await asyncio.sleep(60)
+        pass
 
     async def get_user_id_from_config_or_default(self, message) -> Optional[str]:
         """Получает ID пользователя для мониторинга."""
