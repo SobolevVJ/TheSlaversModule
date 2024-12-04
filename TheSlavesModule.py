@@ -27,38 +27,8 @@ class TheSlavesrMod(loader.Module):
         "usage_locksalve": "Использование: `.lockslave <slave_id> <hours>`",
         "usage_autolock": "Использование: `.autolock`",
         "usage_get_me": "Использование: `.get_me`",
-        "format_master": (
-            "<b>ID:</b> <code>{}</code>\n"
-            "<b>Имя:</b> {}\n"
-            "<b>Фамилия:</b> {}\n"
-            "<b>Username:</b> @{}\n"
-            "<b>Количество продаж:</b> {}\n"
-            "<b>Цена:</b> {}\n"
-            "<b>Производительность:</b> {}\n"
-            "<b>Время до разблокировки:</b> {} минут\n"
-        ),
-        "format_user": (
-            "<b>ID:</b> <code>{}</code>\n"
-            "<b>Имя:</b> {}\n"
-            "<b>Фамилия:</b> {}\n"
-            "<b>Username:</b> @{}\n"
-            "<b>ID Повелителя:</b> <code>{}</code>\n"
-            "<b>Количество продаж:</b> {}\n"
-            "<b>Цена:</b> {}\n"
-            "<b>ID Отряда:</b> <code>{}</code>\n"
-            "<b>Время до разблокировки:</b> {} минут\n"
-            "<b>Цена за час блокировки:</b> {}\n"
-            "<b>Производительность:</b> {}\n"
-            "<b>Баланс:</b> {}\n"
-            "<b>Баланс в минуту:</b> {}\n"
-            "<b>Количество рабов:</b> {}\n"
-        ),
         "format_slave": (
-            "🔸 <b>ID Раба:</b> <code>{}</code>\n"
-            "🔹 <b>Имя:</b> {}\n"
-            "🔹 <b>Username:</b> @{}\n"
-            "🔹 <b>Производительность:</b> {}\n"
-            "🔹 <b>Баланс:</b> {}\n"
+            "🔹 <b>Имя:</b> {} (@{}) ({})\n"
             "🔹 <b>Время до разблокировки:</b> {} минут\n"
         ),
         "success_locksalve": "🔒 Раб с ID <code>{}</code> успешно заблокирован на <b>{}</b> часов.",
@@ -67,13 +37,13 @@ class TheSlavesrMod(loader.Module):
         "invalid_args": "❌ Неверные аргументы.\nИспользование: `.lockslave <slave_id> <hours>`",
         "autolock_summary": "✅ <b>Автоматическая блокировка рабов завершена:</b>\n{}\n",
         "get_me_info": (
-            "<b>📊 Ваш Баланс:</b> <code>{:,}</code> монет\n\n"
+            "<b>📊 Ваш Баланс:</b> <code>{}</code> монет\n\n"
             "<b>📈 Доход:</b>\n"
-            "• <b>В минуту:</b> <code>{:,}</code> монет\n"
-            "• <b>В час:</b> <code>{:,}</code> монет\n"
-            "• <b>В день:</b> <code>{:,}</code> монет\n"
-            "• <b>В месяц:</b> <code>{:,}</code> монет\n"
-            "\n<b>💸 Расходы на 1 обход:</b> <code>{:,}</code> монет\n"
+            "• <b>В минуту:</b> <code>{}</code> монет\n"
+            "• <b>В час:</b> <code>{}</code> монет\n"
+            "• <b>В день:</b> <code>{}</code> монет\n"
+            "• <b>В месяц:</b> <code>{}</code> монет\n"
+            "\n<b>💸 Расходы на 1 обход:</b> <code>{}</code> монет\n"
         ),
         "error_get_me": "❌ Не удалось получить информацию о доходах и расходах: `<code>{}</code>`",
         "success_buyslave": "✅ Раб с ID <code>{}</code> успешно выкуплен.",
@@ -191,106 +161,6 @@ class TheSlavesrMod(loader.Module):
             return
         self.config["AUTHORIZATION_HEADER"] = args.strip()
         await message.edit("✅ AUTHORIZATION_HEADER успешно установлен.")
-
-    @loader.command()
-    async def info_slaves(self, message):
-        """Выполняет GET-запрос к API и отображает информацию о мастере и пользователе."""
-        user_id = await self.get_user_id(message)
-        if not user_id:
-            await message.edit("❌ Не удалось определить ID пользователя.")
-            return
-        await message.edit(self.strings["fetching"])
-        data = await self.make_request("get", f"user/{user_id}/slaves")
-        if not data:
-            await message.edit(self.strings["no_data"])
-            return
-        response_text = ""
-        if isinstance(data, dict):
-            master = data.get("master")
-            user = data.get("user")
-            if master:
-                formatted_master = self.strings["format_master"].format(
-                    master.get("id", "N/A"),
-                    master.get("first_name", "N/A"),
-                    master.get("last_name", "—"),
-                    master.get("username", "N/A"),
-                    master.get("sells_count", "N/A"),
-                    master.get("price", "N/A"),
-                    master.get("performance", "N/A"),
-                    master.get("time_to_unlock", "N/A"),
-                )
-                response_text += self.strings["success_master"].format(formatted_master)
-            if user:
-                formatted_user = self.strings["format_user"].format(
-                    user.get("id", "N/A"),
-                    user.get("first_name", "N/A"),
-                    user.get("last_name", "—"),
-                    user.get("username", "N/A"),
-                    user.get("master_id", "N/A"),
-                    user.get("sells_count", "N/A"),
-                    user.get("price", "N/A"),
-                    user.get("squad_id", "N/A"),
-                    user.get("time_to_unlock", "N/A"),
-                    user.get("lock_price_per_hour", "N/A"),
-                    user.get("performance", "N/A"),
-                    user.get("balance", "N/A"),
-                    user.get("balance_per_minute", "N/A"),
-                    user.get("slaves_count", "N/A"),
-                )
-                response_text += self.strings["success_user"].format(formatted_user)
-        elif isinstance(data, list):
-            response_text += "<b>📜 Список ваших рабов:</b>\n\n"
-            for slave in data:
-                if isinstance(slave, dict):
-                    formatted_slave = self.strings["format_slave"].format(
-                        slave.get("id", "N/A"),
-                        slave.get("first_name", "N/A"),
-                        slave.get("username", "N/A"),
-                        slave.get("performance", "N/A"),
-                        slave.get("balance", "N/A"),
-                        slave.get("time_to_unlock", "N/A"),
-                    )
-                    response_text += f"{formatted_slave}\n"
-                else:
-                    response_text += f"🔸 Некорректный формат данных для раба: {slave}\n"
-        else:
-            await message.edit(self.strings["no_data"])
-            return
-        await message.edit(response_text, parse_mode="html")
-
-    @loader.command()
-    async def listslaves(self, message):
-        """Получает и отображает список всех ваших рабов."""
-        user_id = await self.get_user_id(message)
-        if not user_id:
-            await message.edit("❌ Не удалось определить ID пользователя.")
-            return
-        await message.edit(self.strings["fetching"])
-        data = await self.make_request("get", f"user/{user_id}/slaves")
-        if not data:
-            await message.edit(self.strings["no_data"])
-            return
-        if isinstance(data, list):
-            if not data:
-                await message.edit(self.strings["no_slaves"])
-                return
-            response_text = "<b>📜 Список ваших рабов:</b>\n\n"
-            for slave in data:
-                if isinstance(slave, dict):
-                    formatted_slave = self.strings["format_slave"].format(
-                        slave.get("id", "N/A"),
-                        slave.get("first_name", "N/A"),
-                        slave.get("username", "N/A"),
-                        slave.get("performance", "N/A"),
-                        slave.get("balance", "N/A"),
-                        slave.get("time_to_unlock", "N/A"),
-                    )
-                    response_text += f"{formatted_slave}\n"
-                else:
-                    response_text += f"🔸 Некорректный формат данных для раба: {slave}\n"
-            await message.edit(response_text, parse_mode="html")
-        else:
-            await message.edit(self.strings["no_data"])
 
     @loader.command()
     async def lockslave(self, message):
@@ -446,11 +316,6 @@ class TheSlavesrMod(loader.Module):
         else:
             logger.error(f"Не удалось выкупить раба с ID {slave_id}.")
             return False
-
-    async def monitor_slaves(self):
-        """Фоновая задача, которая каждые 1 минуту проверяет статус рабов и выкупает тех, кто покинул систему."""
-        pass
-
     async def get_user_id_from_config_or_default(self, message) -> Optional[str]:
         """Получает ID пользователя для мониторинга."""
         return str(message.from_id)
