@@ -9,6 +9,7 @@ from hikka import loader, utils
 from telethon import events
 import aiohttp
 from fake_useragent import UserAgent
+import brotli
 ua = UserAgent()
 
 logger = logging.getLogger(__name__)
